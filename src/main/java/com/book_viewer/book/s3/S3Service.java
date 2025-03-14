@@ -2,7 +2,9 @@ package com.book_viewer.book.s3;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 
@@ -15,12 +17,15 @@ import java.util.stream.Collectors;
 public class S3Service {
 
     private final S3Client s3Client;
+    private static final String bucketName = "book-viewer";
+    private static final String AWS_REGION = "us-east-1";
 
-    @Value("${aws.s3.bucket}")
-    private String bucketName;
 
     public S3Service(S3Client s3Client) {
-        this.s3Client = s3Client;
+        this.s3Client = S3Client.builder()
+                .region(Region.of(AWS_REGION))
+                .credentialsProvider(DefaultCredentialsProvider.create())
+                .build();
     }
 
     // ✅ Upload an image to S3
@@ -32,7 +37,6 @@ public class S3Service {
                             .bucket(bucketName)
                             .key(fileName)
                             .contentType(file.getContentType())
-//                            .acl(ObjectCannedACL.PUBLIC_READ)
                             .build(),
                     RequestBody.fromBytes(file.getBytes()));
 
