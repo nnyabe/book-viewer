@@ -9,7 +9,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: Tag-Finder-VPC
+          Value: Book-Viewer-VPC
   # Public Subnets
   PublicSubnet1:
     Type: AWS::EC2::Subnet
@@ -66,10 +66,10 @@ Resources:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
   # ECS Cluster
-  TagFinderCluster:
+  BookViewerCluster:
     Type: AWS::ECS::Cluster
     Properties:
-      ClusterName: TagFinderCluster
+      ClusterName: BookViewerCluster
   # Task Execution Role
   TaskExecutionRole:
     Type: AWS::IAM::Role
@@ -115,12 +115,12 @@ Resources:
   ECSLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: tag-finder-log-group
+      LogGroupName: book-viewer-log-group
   # ECS Task Definition
   ECSTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: tag-finder-task
+      Family: bookViewerTask
       RequiresCompatibilities:
         - FARGATE
       Cpu: '2048'
@@ -129,16 +129,15 @@ Resources:
       ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       TaskRoleArn: !GetAtt S3AccessRole.Arn
       ContainerDefinitions:
-        - Name: tag-finder-container
+        - Name: bookViewerContainer
           Essential: true
           Image: public.ecr.aws/l1r3k7b9/book-viewer-repo:chamamme_nnyabe_book
           PortMappings:
             - ContainerPort: 8080
-              # HostPort: 80
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: tag-finder-log-group
+              awslogs-group: book-viewer-log-group
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
   LoadBalancerSecurityGroup:
@@ -172,10 +171,10 @@ Resources:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
   # Application Load Balancer
-  TagFinderLoadBalancer:
+  BookViewerLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: tag-finder-load-balancer
+      Name: bookViewerLoadBalancer
       Subnets:
         - !Ref PublicSubnet1
         - !Ref PublicSubnet2
@@ -186,7 +185,7 @@ Resources:
   ECSLoadBalancerTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: tag-finder-target-group
+      Name: bookViewerTargetGroup
       Port: 8080
       Protocol: HTTP
       VpcId: !Ref VPC
@@ -204,14 +203,14 @@ Resources:
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref ECSLoadBalancerTargetGroup
-      LoadBalancerArn: !Ref TagFinderLoadBalancer
+      LoadBalancerArn: !Ref BookViewerLoadBalancer
       Port: 80
       Protocol: HTTP
   # ECS Service
   ECSService:
     Type: AWS::ECS::Service
     Properties:
-      Cluster: !Ref TagFinderCluster
+      Cluster: !Ref BookViewerCluster
       TaskDefinition: !Ref ECSTaskDefinition
       LaunchType: FARGATE
       SchedulingStrategy: REPLICA
@@ -227,7 +226,7 @@ Resources:
             - !Ref ECSServiceSecurityGroup
       LoadBalancers:
         - TargetGroupArn: !Ref ECSLoadBalancerTargetGroup
-          ContainerName: tag-finder-container
+          ContainerName: bookViewerContainer
           ContainerPort: 8080
       PropagateTags: SERVICE
       EnableECSManagedTags: true
