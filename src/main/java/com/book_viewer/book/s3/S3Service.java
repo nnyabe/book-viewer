@@ -21,14 +21,14 @@ public class S3Service {
     private static final String AWS_REGION = "us-east-1";
 
 
-    public S3Service(S3Client s3Client) {
+    public S3Service() {
         this.s3Client = S3Client.builder()
                 .region(Region.of(AWS_REGION))
                 .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
     }
 
-    // ✅ Upload an image to S3
+    // Upload an image to S3
     public String uploadImage(MultipartFile file) {
         String fileName = "books/" + UUID.randomUUID() + "_" + file.getOriginalFilename();
 
@@ -46,7 +46,7 @@ public class S3Service {
         }
     }
 
-    // ✅ Get an image URL from S3
+    // Get an image URL from S3
     public String getImageUrl(String fileName) {
         return s3Client.utilities()
                 .getUrl(GetUrlRequest.builder().bucket(bucketName).key(fileName).build())
@@ -54,7 +54,7 @@ public class S3Service {
 
     }
 
-    // ✅ Fetch images with pagination
+    // Fetch images with pagination
     public List<String> getImages(int page, int pageSize) {
         int startIndex = (page - 1) * pageSize;
 

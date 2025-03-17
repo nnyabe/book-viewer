@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload Book Image</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f8f8f8;
+        text-align: center;
+    }
+    .navbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 20px;
+        background-color: #333;
+        color: white;
+    }
+    .navbar .brand {
+        font-size: 1.5em;
+        font-weight: bold;
+    }
+    .navbar .nav-buttons button {
+        margin-left: 10px;
+        padding: 8px 15px;
+        border: none;
+        cursor: pointer;
+        background-color: #007bff;
+        color: white;
+        border-radius: 5px;
+    }
+    .upload-container {
+        max-width: 500px;
+        margin: 50px auto;
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    .upload-container h2 {
+        margin-bottom: 15px;
+    }
+    .file-input {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    .preview-container {
+        margin-top: 15px;
+    }
+    .preview-container img {
+        width: 100%;
+        max-height: 300px;
+        object-fit: cover;
+        border-radius: 5px;
+    }
+    .upload-btn {
+        margin-top: 15px;
+        padding: 10px 20px;
+        border: none;
+        background-color: #28a745;
+        color: white;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 1em;
+    }
+    .upload-btn:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+<div class="navbar">
+  <div class="brand">BookHome</div>
+  <div class="nav-buttons">
+    <button onclick="window.location.href='index.html'">Home</button>
+  </div>
+</div>
+
+<div class="upload-container">
+  <h2>Upload Book Image</h2>
+  <input type="file" id="fileInput" class="file-input" accept="image/*">
+  <div class="preview-container" id="previewContainer" style="display: none;">
+    <h3>Preview</h3>
+    <img id="imagePreview" src="" alt="Image Preview">
+  </div>
+  <button class="upload-btn" id="uploadBtn" disabled>Upload Image</button>
+</div>
+
+<script>
+  const fileInput = document.getElementById("fileInput");
+  const previewContainer = document.getElementById("previewContainer");
+  const imagePreview = document.getElementById("imagePreview");
+  const uploadBtn = document.getElementById("uploadBtn");
+
+  fileInput.addEventListener("change", function(event) {
+      const file = event.target.files[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+              imagePreview.src = e.target.result;
+              previewContainer.style.display = "block";
+          };
+          reader.readAsDataURL(file);
+          uploadBtn.disabled = false;
+      }
+  });
+
+  uploadBtn.addEventListener("click", async function() {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+          uploadBtn.textContent = "Uploading...";
+          uploadBtn.disabled = true;
+
+          const response = await fetch("http://localhost:8080/api/s3/upload", {
+              method: "POST",
+              body: formData
+          });
+
+          if (response.ok) {
+              alert("Image uploaded successfully!");
+              fileInput.value = "";
+              previewContainer.style.display = "none";
+              uploadBtn.textContent = "Upload Image";
+          } else {
+              throw new Error("Upload failed");
+          }
+      } catch (error) {
+          console.error("Error uploading file:", error);
+          alert("Failed to upload image. Please try again.");
+          uploadBtn.textContent = "Upload Image";
+          uploadBtn.disabled = false;
+      }
+  });
+</script>
+</body>
+</html>
