@@ -129,7 +129,7 @@
 
     async function fetchImages(page) {
         try {
-            const response = await fetch(`http://localhost:8080/api/s3/images?page=${page}&size=${pageSize}`);
+            const response = await fetch(`api/s3/images?page=${page}&size=${pageSize}`);
 
             if (!response.ok)
                 throw new Error("Network response was not ok");

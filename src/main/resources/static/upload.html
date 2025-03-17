@@ -126,7 +126,7 @@
           uploadBtn.textContent = "Uploading...";
           uploadBtn.disabled = true;
 
-          const response = await fetch("http://localhost:8080/api/s3/upload", {
+          const response = await fetch("api/s3/upload", {
               method: "POST",
               body: formData
           });
