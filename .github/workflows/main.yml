@@ -6,7 +6,7 @@ on:
       - master  # Runs when changes are pushed to the main branch
 
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
@@ -37,7 +37,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-
       - name: Build and tag Docker image
         run: |
           docker build -t book-viewer-repo .
@@ -66,8 +65,8 @@ jobs:
           # Get current task definition
           aws ecs describe-task-definition --task-definition book-viewer-task --query taskDefinition > task-definition.json
           
-          # Update container image in task definition to use latest tag
-          jq '.containerDefinitions[0].image = "public.ecr.aws/l1r3k7b9/book-viewer-repo:latest"' task-definition.json > new-task-definition.json
+          # Update container image in task definition to use the same tag as pushed
+          jq '.containerDefinitions[0].image = "public.ecr.aws/l1r3k7b9/book-viewer-repo:chamamme_nnyabe_book"' task-definition.json > new-task-definition.json
           
           # Register new task definition version
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
