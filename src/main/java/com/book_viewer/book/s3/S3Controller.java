@@ -35,4 +35,16 @@ public class S3Controller {
         List<String> images = s3Service.getImages(page, size);
         return ResponseEntity.ok(images);
     }
+    // Delete an image
+    @DeleteMapping("/delete")
+    public ResponseEntity<String> deleteImage(@RequestParam("fileName") String fileName) {
+        boolean isDeleted = s3Service.deleteImage(fileName);
+        if (isDeleted) {
+            return ResponseEntity.ok("File deleted successfully: " + fileName);
+        } else {
+            return ResponseEntity.badRequest().body("Failed to delete file: " + fileName);
+        }
+    }
+
+
 }

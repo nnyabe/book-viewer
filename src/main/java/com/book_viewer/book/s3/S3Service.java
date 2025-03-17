@@ -8,6 +8,8 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
@@ -64,6 +66,7 @@ public class S3Service {
                 .maxKeys(startIndex + pageSize) // Fetch more, but return only requested
                 .build());
 
+
         List<S3Object> allImages = response.contents();
 
         return allImages.stream()
@@ -72,4 +75,18 @@ public class S3Service {
                 .map(obj -> getImageUrl(obj.key()))
                 .collect(Collectors.toList());
     }
+
+    public boolean deleteImage(String fileName) {
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(fileName)
+                    .build());
+            return true;
+        } catch (S3Exception e) {
+            System.err.println("Error deleting file: " + e.awsErrorDetails().errorMessage());
+            return false;
+        }
+    }
+
 }

@@ -9,7 +9,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: Book-Viewer-VPC
+          Value: bookViewerVPC
   # Public Subnets
   PublicSubnet1:
     Type: AWS::EC2::Subnet
@@ -111,6 +111,21 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
+  # CodeDeploy role for blue-green deployments
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codedeploy.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS
   # Create log group
   ECSLogGroup:
     Type: AWS::Logs::LogGroup
@@ -120,7 +135,7 @@ Resources:
   ECSTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: bookViewerTask
+      Family: book-viewer-task
       RequiresCompatibilities:
         - FARGATE
       Cpu: '2048'
@@ -129,7 +144,7 @@ Resources:
       ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       TaskRoleArn: !GetAtt S3AccessRole.Arn
       ContainerDefinitions:
-        - Name: bookViewerContainer
+        - Name: book-viewer-container
           Essential: true
           Image: public.ecr.aws/l1r3k7b9/book-viewer-repo:chamamme_nnyabe_book
           PortMappings:
@@ -154,6 +169,14 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -174,7 +197,7 @@ Resources:
   BookViewerLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: bookViewerLoadBalancer
+      Name: book-viewer-load-balancer
       Subnets:
         - !Ref PublicSubnet1
         - !Ref PublicSubnet2
@@ -182,10 +205,11 @@ Resources:
         - !Ref LoadBalancerSecurityGroup
       Scheme: internet-facing
       Type: application
-  ECSLoadBalancerTargetGroup:
+  # Production target group (initially blue environment)
+  BlueTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: bookViewerTargetGroup
+      Name: book-viewer-blue-target
       Port: 8080
       Protocol: HTTP
       VpcId: !Ref VPC
@@ -196,13 +220,38 @@ Resources:
       TargetGroupAttributes:
         - Key: deregistration_delay.timeout_seconds
           Value: "300"
-  # Application Load Balancer Listener (for HTTP traffic)
-  Listener:
+  # Green target group for new deployments
+  GreenTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: book-viewer-green-target
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckPath: /
+      HealthCheckTimeoutSeconds: 60
+      HealthCheckIntervalSeconds: 70
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "300"
+  # Test listener for validation testing before switching traffic
+  TestListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref ECSLoadBalancerTargetGroup
+          TargetGroupArn: !Ref GreenTargetGroup
+      LoadBalancerArn: !Ref BookViewerLoadBalancer
+      Port: 8081
+      Protocol: HTTP
+  # Production listener (initially points to blue environment)
+  ProductionListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref BlueTargetGroup
       LoadBalancerArn: !Ref BookViewerLoadBalancer
       Port: 80
       Protocol: HTTP
@@ -210,6 +259,7 @@ Resources:
   ECSService:
     Type: AWS::ECS::Service
     Properties:
+      ServiceName: book-viewer-service
       Cluster: !Ref BookViewerCluster
       TaskDefinition: !Ref ECSTaskDefinition
       LaunchType: FARGATE
@@ -225,18 +275,20 @@ Resources:
           SecurityGroups:
             - !Ref ECSServiceSecurityGroup
       LoadBalancers:
-        - TargetGroupArn: !Ref ECSLoadBalancerTargetGroup
-          ContainerName: bookViewerContainer
+        - TargetGroupArn: !Ref BlueTargetGroup
+          ContainerName: book-viewer-container
           ContainerPort: 8080
       PropagateTags: SERVICE
       EnableECSManagedTags: true
+      DeploymentController:
+        Type: CODE_DEPLOY
     DependsOn:
-      - Listener
+      - ProductionListener
+      - TestListener
   # IAM Role for Auto Scaling
   ECSAutoScalingRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ECSAutoScalingRole
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -268,7 +320,6 @@ Resources:
   # Auto Scaling Target
   ECSAutoScalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
-    DependsOn: ECSService
     Properties:
       MaxCapacity: 3
       MinCapacity: 1
@@ -293,3 +344,54 @@ Resources:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
         ScaleInCooldown: 60
         ScaleOutCooldown: 60
+  # CodeDeploy Application
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: book-viewer-application
+      ComputePlatform: ECS
+  # CodeDeploy Deployment Group
+  DeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
+      DeploymentGroupName: book-viewer-deployment-group
+      DeploymentStyle:
+        DeploymentType: BLUE_GREEN
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+      BlueGreenDeploymentConfiguration:
+        DeploymentReadyOption:
+          ActionOnTimeout: CONTINUE_DEPLOYMENT
+          # Removed the WaitTimeInMinutes parameter as it's causing the error
+        TerminateBlueInstancesOnDeploymentSuccess:
+          Action: TERMINATE
+          TerminationWaitTimeInMinutes: 5
+      ECSServices:
+        - ClusterName: !Ref BookViewerCluster
+          ServiceName: !GetAtt ECSService.Name
+      LoadBalancerInfo:
+        TargetGroupPairInfoList:
+          - ProdTrafficRoute:
+              ListenerArns:
+                - !Ref ProductionListener
+            TestTrafficRoute:
+              ListenerArns:
+                - !Ref TestListener
+            TargetGroups:
+              - Name: !GetAtt BlueTargetGroup.TargetGroupName
+              - Name: !GetAtt GreenTargetGroup.TargetGroupName
+Outputs:
+  BookViewerLoadBalancerDNS:
+    Description: The DNS name of the load balancer
+    Value: !GetAtt BookViewerLoadBalancer.DNSName
+  BookViewerLoadBalancerURL:
+    Description: URL of the load balancer
+    Value: !Join ['', ['http://', !GetAtt BookViewerLoadBalancer.DNSName]]
+  CodeDeployAppName:
+    Description: CodeDeploy Application Name for ECS Blue-Green Deployments
+    Value: !Ref CodeDeployApplication
+  CodeDeployGroupName:
+    Description: CodeDeploy Deployment Group Name
+    Value: !Ref DeploymentGroup
