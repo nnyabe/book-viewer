@@ -47,78 +47,78 @@ jobs:
         run: |
           docker push public.ecr.aws/l1r3k7b9/book-viewer-repo:chamamme_nnyabe_book
           
-deploy:
-    name: Deploy with Blue-Green strategy
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    
-    steps:
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
-    - name: Register new task definition
-      id: task-def
-      run: |
-        # Get current task definition
-        aws ecs describe-task-definition --task-definition book-viewer-task --query taskDefinition > task-definition.json
-        
-        # Update container image in task definition to use latest tag
-        jq '.containerDefinitions[0].image = "public.ecr.aws/l1r3k7b9/book-viewer-repo:latest"' task-definition.json > new-task-definition.json
-        
-        # Register new task definition version
-        NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
-          --family book-viewer-task \
-          --requires-compatibilities FARGATE \
-          --network-mode awsvpc \
-          --cpu 2048 \
-          --memory 4096 \
-          --execution-role-arn $(jq -r '.executionRoleArn' task-definition.json) \
-          --task-role-arn $(jq -r '.taskRoleArn' task-definition.json) \
-          --container-definitions "$(jq '.containerDefinitions' new-task-definition.json)" \
-          --query 'taskDefinition.taskDefinitionArn' \
-          --output text)
-        
-        echo "task_definition_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
-    
-    - name: Create AppSpec file
-      run: |
-        cat > appspec.yaml << 'EOF'
-        version: 0.0
-        Resources:
-          - TargetService:
-              Type: AWS::ECS::Service
-              Properties:
-                TaskDefinition: "${TASK_DEF_ARN}"
-                LoadBalancerInfo:
-                  ContainerName: "book-viewer-container"
-                  ContainerPort: 8080
-                PlatformVersion: "LATEST"
-        EOF
-        
-        # Replace placeholder with actual task definition ARN
-        sed -i "s|\${TASK_DEF_ARN}|${{ steps.task-def.outputs.task_definition_arn }}|g" appspec.yaml
-        
-        # Print AppSpec for debugging
-        cat appspec.yaml
-        
-    - name: Start CodeDeploy Deployment
-      run: |
-        DEPLOYMENT_ID=$(aws deploy create-deployment \
-          --application-name book-viewer-application \
-          --deployment-group-name book-viewer-deployment-group \
-          --revision revisionType=AppSpecContent,appSpecContent="{content='$(cat appspec.yaml)'}" \
-          --description "Automated deployment via GitHub Actions" \
-          --query 'deploymentId' \
-          --output text)
-        
-        echo "Started deployment: $DEPLOYMENT_ID"
-        
-        # Monitor deployment - don't wait for completion to avoid GitHub Action timeouts
-        aws deploy get-deployment --deployment-id $DEPLOYMENT_ID
-        
-        echo "Deployment ID: $DEPLOYMENT_ID"
-        echo "Monitor the deployment progress in AWS CodeDeploy console"
+  deploy:
+      name: Deploy with Blue-Green strategy
+      needs: build-and-push
+      runs-on: ubuntu-latest
+      if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+      
+      steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      - name: Register new task definition
+        id: task-def
+        run: |
+          # Get current task definition
+          aws ecs describe-task-definition --task-definition book-viewer-task --query taskDefinition > task-definition.json
+          
+          # Update container image in task definition to use latest tag
+          jq '.containerDefinitions[0].image = "public.ecr.aws/l1r3k7b9/book-viewer-repo:latest"' task-definition.json > new-task-definition.json
+          
+          # Register new task definition version
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --family book-viewer-task \
+            --requires-compatibilities FARGATE \
+            --network-mode awsvpc \
+            --cpu 2048 \
+            --memory 4096 \
+            --execution-role-arn $(jq -r '.executionRoleArn' task-definition.json) \
+            --task-role-arn $(jq -r '.taskRoleArn' task-definition.json) \
+            --container-definitions "$(jq '.containerDefinitions' new-task-definition.json)" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
+          echo "task_definition_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+      
+      - name: Create AppSpec file
+        run: |
+          cat > appspec.yaml << 'EOF'
+          version: 0.0
+          Resources:
+            - TargetService:
+                Type: AWS::ECS::Service
+                Properties:
+                  TaskDefinition: "${TASK_DEF_ARN}"
+                  LoadBalancerInfo:
+                    ContainerName: "book-viewer-container"
+                    ContainerPort: 8080
+                  PlatformVersion: "LATEST"
+          EOF
+          
+          # Replace placeholder with actual task definition ARN
+          sed -i "s|\${TASK_DEF_ARN}|${{ steps.task-def.outputs.task_definition_arn }}|g" appspec.yaml
+          
+          # Print AppSpec for debugging
+          cat appspec.yaml
+          
+      - name: Start CodeDeploy Deployment
+        run: |
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name book-viewer-application \
+            --deployment-group-name book-viewer-deployment-group \
+            --revision revisionType=AppSpecContent,appSpecContent="{content='$(cat appspec.yaml)'}" \
+            --description "Automated deployment via GitHub Actions" \
+            --query 'deploymentId' \
+            --output text)
+          
+          echo "Started deployment: $DEPLOYMENT_ID"
+          
+          # Monitor deployment - don't wait for completion to avoid GitHub Action timeouts
+          aws deploy get-deployment --deployment-id $DEPLOYMENT_ID
+          
+          echo "Deployment ID: $DEPLOYMENT_ID"
+          echo "Monitor the deployment progress in AWS CodeDeploy console"
